@@ -1,0 +1,918 @@
+---
+title: "MA710 - Classification"
+author: "Vinay Marwaha, Tyler Miguel, Katelyn Tolbert, and Irene Yang"
+date: "May 9, 2017"
+output:
+  html_document:
+    toc: yes
+---
+
+# Introduction
+
+In today's global economy, higher education is no longer a luxury, but a necessity for individual economic opportunity and competitiveness. Over this decade, employment in jobs requiring education beyond a high school diploma will grow more rapidly than employment in jobs that do not. Each year, tens of millions of Americans make choices about higher education. Prospective students and their families must grapple with assessing which of the many institutions available will best prepare them to achieve their goals. Many institutions offer high-quality education at affordable prices. However, some schools do not serve their students well; for instance, they may charge prices that make higher education increasingly out of reach or fail to support students through to completing their education and obtaining well-paying jobs. Evidence suggests that the quality of the school attended can have large consequences for future outcomes.
+
+To that end, data on the earnings and employment prospects of former students can provide key information. This report attempts to separate wheat from chaff by classifying the institutions into three distinct categories subjected to range of mean earnings they afford to their students, and identify characteristics of these institutions which may have significant bearings on this classification scheme. The following mean earning ranges are selected to classify each of the 4-year institution into an exclusive class - Low, Medium, and High:
+
+* Low Earning Institutions - From $15,300 to $37,646
+* Medium Earnings Institutions - From $37,646 to $53,669
+* High Earnings Institutions - From $53,669 to $101,400
+
+Some of the institution characteristics explored in this report for classification purposes are as follows:
+
+* Percentage of degrees awarded in 54 different fields of studies
+* Selectiveness of an institution measured on admission rate at SAT score
+* Completion rate
+* Tuition revenues 
+* Expenditure on instructions
+* Faculty salaries
+
+# Dataset Preparation
+
+**Required R libraries**
+
+The following R libraries are used for the analyses to follow:
+
+* `readr` for reading CSV data file
+* `knitr` for creating elegant tables in RMD
+* `tidyr` for data manipulation and transformation
+* `dplyr` for data manipulation and transformation
+* `arules` for discretizing target variable
+* `DMwR` for comparative experimentation of classifiers using 10-fold CV
+* `caret` for streamlining the process of evaluating the predictive models
+* `rpart` for recursive partitioning of classification trees
+* `rpart.plot` for visualizing the classification trees
+* `e1071` for Support Vector Machine modeling
+* `kknn` for classification with weighted k-Nearest neighbors modeling
+* `randomForest` for classification with Random Forests modeling
+
+
+```{r warning=FALSE, message=FALSE}
+library(readr)
+library(knitr)
+library(tidyr)
+library(dplyr)
+library(arules)
+library(DMwR)
+library(caret)
+library(rpart) 
+library(rpart.plot)
+library(e1071)
+library(kknn)
+library(randomForest)
+```
+
+This analysis utilizes the 2014-2015 "College Scorecard" data set. This data is available to download is CSV format from [collegescorecard.ed.gov](https://collegescorecard.ed.gov/data/). The `read_csv` function is used to read this CSV file from the local file system. The character strings - "", "NA", "NULL", and "PrivacySuppressed" are designated as `NA`s while reading data file into `tbl_df` object. 
+
+```{r}
+data_dir <- "/Users/tylermiguel/Desktop/Bentley/Data Mining (MA710)/Assignment 4"
+#data_dir <- "C:/All Docs/MSBA/MA-710/Assignments/Data/CollegeScorecard_Raw_Data"
+#data_dir <- "~Irene/Desktop/graduate/MA710/asst4"
+#data_dir="/Users/katelyntolbert/Downloads"
+data_file_name <- "Most-Recent-Cohorts-All-Data-Elements.csv"
+file_path <- file.path(data_dir, data_file_name)
+```
+
+```{r message=FALSE}
+csc_tbl_raw = read_csv(file_path,  na = c("", "NA", "NULL", "PrivacySuppressed"))
+```
+
+The `dim` function was used to check the size of the data frame. 
+
+```{r}
+dim(csc_tbl_raw)
+```
+
+The data frame contains **7,703** observations and **1,743** variables.
+
+# PART I
+
+We use four different types of classifiers - 'Decision Trees', 'k-Nearest Neighbors', 'Support Vector Machines', and 'Random Forests' to meet the objectives of this report. The brief explanation of each of the classifier is given below.
+
+## Explanation of Classification Models 
+
+### Decision Tree
+
+A decision tree can be used for both regression and classification tasks. As our goal is to classify our data into high, medium, and low mean wages, we will be utilizing it for classification. The model relies on measurements of the impurity of a subset of a data set. The model works by splitting the data on different variables. For example, if we were looking at weather data and wanted to predict whether or not it was going to snow or not, it is likely that the model would split on temperature. A higher temperature would likely indicate no snow, whereas a lower temperature would increase the probability of snow. 
+
+A subset is considered to be “pure” if all records of a subset have only one target variable value and “least pure” if there are an equal number of rows for all target variable values. The Gini index is most often utilized to measure impurity. This index ranges in value between 0 and 1. 0 represents perfect equality between the target variables and 1 represents perfect inequality. An increase in the Gini Index can be measured to determine if a new branch adds value to the tree or not. 
+
+### KNN
+
+The KNN algorithm stands for K-Nearest-Neighbors and the `K` represents the number of “nearest neighbors” that the model will take “votes” from. This algorithm requires choosing a distance metric and it is also often useful to assign weights to the contributions for each neighboring data-point, so that the *closer* neighbors contribute *more* to the average. 
+
+The "rectangular" kernel function is set to `W(d) = 1`. `d` is the standardized distance from the target point to a neighbor point, determines that all of the k nearest neighbors get one vote, for factor target variables.  The "triangular" kernel function is `W(d) = 1 – d`. This function weights the votes by its standardized distance to the (k+1)-th point.
+
+### Support Vector Machine
+
+Support Vector Machine, commonly referred to as “SVM” is a supervised machine learning algorithm used primarily for classification problems, although it can also be utilized for regression. The algorithm works by assessing the data points on an n-dimensional plane, where n represents the number of x-variables used for classification. The algorithm then selects the hyper-plane which segregates the data in the most optimal way. The definition of *optimal* in this case is minimizing the “margin” or the distance between the hyper-plan and the nearest data points. The idea is that if the margin is “too close” to any of the data points, then the risk of misclassification of new, unseen data, will be increased. 
+
+SVM optimization utilizes kernel functions which transform variables into non-linear dimensional spaces to invoke separation between data points that did not exist in the native planar state. Depending on the data set, the data transformations can become extremely complex in order to achieve separation between the classification types. Due to the complexity, this algorithm often runs slowly on very large sets. However, our data set is quite manageable so time to converge is not an issue.
+
+### Random Forest
+
+Similar to a decision tree, a random forest machine learning method can be used for both regression and classification tasks, however, we will be utilizing it for classification. As opposed to the basic decision tree method of CART, Random Forest grows multiple trees from subsets of the data. This model utilizes as an ensemble method, where each tree “votes” on the classification for a particular data point. The model will choose the classification that gets the most votes from all the trees in the forest. The Random Forest technique tends to solve for the over-fitting that usually occurs in a decision tree.
+
+As Random Forest is able to effectively handle large data sets with thousands of input variables and successfully identify the most significant variables, we utilize it as the dimensionality reduction method. 
+
+## Variable Selection Explanation
+
+We choose the initial variable set to be utilized for the classification exercise based on our domain knowledge and intuition. Specifically, we want to look at following categories for their bearing on the 'Mean earnings of students working and not enrolled 10 years after entry.' We consider only 4-year institution level (`ICLEVEL`) for our analysis to be meaningful.
+
+1. Academics - We investigate whether the percentage of degrees awarded in 54 different fields of studies (`PCIP[01-54]`) have any bearing on classification. The idea is to find out whether certain fields of studies afford better outcomes for students. For example, if a set of institutions award higher percentages of degrees in particular field of study, *and* if the mean student earnings for those institutions are relatively higher, we may conclude that these institutions are preparing students for better outcomes.
+
+2. Admissions - We want to know if more selective institutions have any bearing on classification. Perhaps institutions that are more selective do a better job at preparing students academically, and thus may produce students with higher mean earnings. We choose `ADM_RATE_ALL` (Overall Admissions Rate) and `SAT_AVG_ALL`(Average SAT Score) variables for this analysis.
+
+3. Aid - We investigate the percentage of undergraduates who receive a Pell Grant (`PCTPELL`) across institutions. The motivation is to find out how well institutions, which are heavily invested in underprivileged students, are preparing these students when compared to institutions which do not support this category of students as well. We also consider the median debt for students (`GRAD_DEBT_MDN`) who have completed to find out whether less affordable institutions are worth the outcomes for students and families who take on the higher debts.
+
+4. Completion Rate - We investigate whether institutions with higher degree completion rate (`C150_4`) affords higher mean earnings.
+
+5. Academic Expenses - We investigate some of the characteristics of institutions for their bearing on classification. We consider net tuition revenue (`TUITFTE`) and  instructional expenditures (`INEXPFTE`) per full-time equivalent student, as well as the average faculty salary (`AVGFACSAL`) to find out how well these characteristics categorize institutions in low, middle, or higher mean earnings buckets. For example, institutions who spend more on faculty, may have better faculty and thus contribute to better student wages.
+
+6. Financial Aid - We investigate whether the percentage of aided students with different levels of family income across institutions have any bearing on the classification. The motivation is to find out  whether institutions who are able to offer additional aid for students has an effect on the student wages down the line. 
+
+7. Cost - We investigate whether higher cost of average cost of attendance (`COSTT4_A`, `COSTT4_P`) and average net price (`NPT4_PUB`, `NPT4_PRIV`) results in better earnings for students.
+
+## Variable Selection
+
+The following `R`-code performs the tasks outlined below:
+
+1. Filter data subjected to 4-year institution level.
+2. Scale earnings (`MN_EARN_WNE_P10`) in order to remove outliers.
+3. Filter to keep only observations which lie **within 3-standard deviation** from mean.
+4. Discretize earnings using the `discretize` function into three categories based on `cluster` method and label them. The earning ranges created are - Low - [$15,300, $37,646], Medium - [$37,646, $53,669], High - [$53,669, $10,140]. 
+5. Select relevant variables discussed above. Note that all of the "field of study" columns (`PCIP[01-54]`) and the "percentage of aided students with different levels of family income" (`INC_PCT[_LO, _M1, _M2, _H1, _H2]`) are selected using `starts_with` helper function. Family income is between $0-$30,000 (`INC_PCT_LO`), $30,001-$48,000 (`INC_PCT_M1`), $48,001-$75,000 (`INC_PCT_M2`), $75,001-$110,000 (`INC_PCT_H1`), and $110,001+ (`INC_PCT_H2`). 
+6. The "Cost of Attendance" is segregated into two columns for *academic* and *program* year. We gather into one column.
+7. Similarly, Net Price is segregated into two columns for public and private institutions. We gather them into one column.
+8. We remove all cases with `NA`s using `complete.cases` function.
+
+```{r}
+csc_tbl_raw %>% 
+  filter(ICLEVEL == 1) %>%
+  mutate(zscores = as.numeric(scale(MN_EARN_WNE_P10))) %>% 
+  filter(abs(zscores) <= 3) %>%
+  mutate(Earnings = discretize(MN_EARN_WNE_P10, method = "cluster", categories = 3,
+                               labels = c("Low", "Medium", "High")))   %>%
+  select(Earnings, 
+         starts_with("PCIP"), 
+         ADM_RATE_ALL, 
+         SAT_AVG_ALL,
+         PCTPELL, 
+         GRAD_DEBT_MDN, 
+         C150_4_POOLED, 
+         TUITFTE, 
+         INEXPFTE, 
+         AVGFACSAL, 
+         starts_with("INC_PCT"), 
+         COSTT4_A, 
+         COSTT4_P, 
+         NPT4_PUB, 
+         NPT4_PRIV) %>%
+  gather(COSTT4_KEY, COST_ATT, -c(1:52, 55:56)) %>%
+  gather(NPT4_KEY, NET_PRICE, -c(1:52, 55:56)) %>%
+  select(-c(COSTT4_KEY, NPT4_KEY)) %>%
+  .[complete.cases(.), ] %>%
+  {.} -> csc_tbl_raw_small
+```
+
+
+The resulting data frame contains **1,227** observations and **54** variables including the target variable, `Earnings`. The target variable consists of three factor levels: "Low", "Medium", and "High".
+
+```{r}
+dim(csc_tbl_raw_small)
+levels(csc_tbl_raw_small$Earnings)
+```
+
+As all 53 features may not be useful for classification we select a smaller set by 'importance' as determined based on 'Random Forest' modeling. We pick 20 most important variables based on:
+
+1. Mean Decrease in Accuracy
+2. Mean Decrease in Gini Index
+
+`R`-code Notes:
+
+1. Create a `formula` object with `Earnings` as target and using all available features. Note, we use this `formula` object throughout our report.
+2. Model `randomForest` with `importance = TRUE` to compute importance.
+3. Create a data frame with first column with feature names and second columns with `MeanDecreaseAccuracy` measures.
+4. `arrange` the features in decreasing order of importance.
+5. `slice` top 20 important features.
+6. Repeat identical steps based on `MeanDecreaseGini` measures.
+7. Merge features from both measures in the final step.
+
+
+```{r}
+form <- as.formula(Earnings ~ .)
+set.seed(710)
+rf_model <- randomForest(form, 
+                         data = csc_tbl_raw_small, 
+                         importance = TRUE,
+                         replace = FALSE)
+
+bind_cols("Variables" = data.frame(rownames(importance(rf_model, type = 1))), 
+          data.frame(importance(rf_model, type = 1))) %>%
+  arrange(desc(MeanDecreaseAccuracy)) %>%
+  slice(1:20) %>%
+  .[[1]] %>% 
+  as.character() %>%
+  {.} -> var_set1
+
+bind_cols("Variables" = data.frame(rownames(importance(rf_model, type = 2))), 
+          data.frame(importance(rf_model, type = 2))) %>%
+  arrange(desc(MeanDecreaseGini)) %>%
+  slice(1:20) %>%
+  .[[1]] %>% 
+  as.character() %>%
+  {.} -> var_set2
+
+var_set <- c(var_set1, var_set2[!var_set2 %in% var_set1])
+```
+
+In our final set, we have 21 features. Below are the names of all variables in the final set. We also visually represent the importance of variables in the decreasing order. 
+
+```{r}
+length(var_set)
+var_set
+varImpPlot(rf_model, sort=TRUE, n.var=min(20, nrow(rf_model$importance)), main = "Variable Importance")
+
+```
+
+In our final step of data preparation, we select this smaller set of most important variables along with target variable. Since, we train and evaluate models using 10-fold cross validation mechanics, in our final data set we have observations in multiple of 10s.
+
+`R`-code Notes:
+
+1. Since we have required variable names in a variable `var_set`, we can not use `select` function to select column names from the data set. Instead we use 'select_` with `.dot` parameter.
+
+```{r}
+csc_tbl_raw_small %>% 
+  select_(.dots = c("Earnings", var_set)) %>% 
+  {.} -> csc_tbl_raw_small
+
+set.seed(710)
+nobs <- nrow(csc_tbl_raw_small)
+csc_tbl_raw_small <- csc_tbl_raw_small[sample(1:(floor(nrow(csc_tbl_raw_small)/10) * 10)), ]
+dim(csc_tbl_raw_small)
+```
+
+As shown above, resulting data frame contains **1,220** observations and **22** variables including target variable - `Earnings` with three factors.
+
+## Create models
+
+We use four different types of learners - 'Decision Trees', 'k-Nearest Neighbors', 'Support Vector Machines', and 'Random Forests'. Each learner is trained with a different combinations and permutations of several hyper parameters to create multitude of models. For our classification problem, the best model is chosen based on the predictability accuracy of that model. 
+
+We create an empty list to store hyper parameters.
+
+```{r}
+vars_hyper <- list()
+```
+
+First, we define hyper parameter for the 'Decision Trees' learner and append to the list. For `rpart.control` we choose different values for complexity parameter (`cp`), the minimum number of observations (`minsplit`) that must exist in a node in order for a split to be attempted, and the maximum depth (`maxdepth`) of any node of the final tree.
+
+```{r}
+vars_hyper$decisionTree <- list(cp = c(.01, .02, .03, .04),
+                                minsplit = c(20, 25, 30),
+                                maxdepth = c(5, 6, 8, 10))
+```
+
+Next, we define hyper parameter for 'k-Nearest Neighbors' learner. We choose number of neighbors considered (`k`), Kernel (`kernel`) to use, and a logical vector (`scale`) indicating the variables to be scaled.
+
+```{r}
+vars_hyper$knn <- list(k = 2^(1:5), 
+                       kernel = c("rectangular", "triangular", "optimal"),
+                       scale = c(TRUE, FALSE))
+```
+
+Next, we define hyper parameter for 'Support Vector Machines' learner. We choose cost of constraints violation (`cost`), parameter needed for all kernels (`gamma`), Kernel to use, and a logical vector (`scale`) indicating the variables to be scaled.
+
+```{r}
+vars_hyper$svm <- list(cost = 2^(2:4),
+                 gamma = 2^(-1:1),
+                 kernel = c("radial", "sigmoid"),
+                 scale = c(TRUE, FALSE))
+```
+
+Finally, we define hyper parameter for 'Random Forests' learner. We choose number of trees (`ntree`) to grow, number of variables (`mtry`) randomly sampled as candidates at each split, and should sampling of cases be done with or without replacement (`replace`).
+
+```{r}
+vars_hyper$randomForest <- list(ntree = c(500, 750, 1000),
+                                mtry = c(5, 7, 9, 11, 13),
+                                replace = FALSE)
+```
+
+Since we have four learners with several combinations and permutation of hyper parameter, we write a generic function to train and predict target class to be efficient. 
+
+`R`-code Notes:
+
+1. Method takes formula, training and test data sets, and learner name as input. Besides learner specific parameters are passed as optional parameters (`...`).
+2. Based on the learner's name method build the model using training data set and make the prediction on the test data set.
+3. Finally, accuracy is calculated for each test observation and average accuracy is returned to the calling method.
+
+```{r}
+genericModel <- function(form, train, test, learner, ...) {
+  pred <- NA
+  if (learner == 'decisionTree') {
+    rpart_control <- rpart.control(...)
+    model <- rpart(form,
+                   train,
+                   control = rpart_control)
+    pred <- predict(model, test, type = "class")
+  }
+  if (learner == 'knn') {
+    model <- kknn(form,
+                  train,
+                  test,
+                  ...)
+    pred <- model$fitted.values
+  }
+  if (learner == 'svm') {
+    model <- svm(form,
+                 train,
+                 ...)
+    pred <- predict(model, test)
+  }
+  if (learner == 'randomForest')  {
+    model <- randomForest(form, 
+                          train,
+                          ...)
+    pred <- predict(model, test)
+  }
+  c(accuracy = mean(ifelse(pred == resp(form, test), 100, 0)))
+}
+```
+
+We are ready to create and train our learners, and compare their performances. We use `DMwR` library to facilitate these tasks. `DMwR` library provides an `experimentalComparison` function which carries out comparisons among learning systems on a set of predictive tasks e.g. classification in our case. This function internally invokes `variants` function. The main goal of `variants` function is to facilitate the generation of different variants of a learner. We supply a set of hyper parameters of the learner, and then have this function return a set of learner objects, each consisting of one of the different possible combinations of the variants. For example if learner name is "decisionTree", the first variant based on a set of hyper parameters is a learner object with name `decisionTree.v1`, second variant with name `decisionTree.v2`, so on and so forth. 
+
+Once a set of learner objects are created, `experimentalComparison` function trains the learners and stores the results for comparison. This function takes two additional parameters - data set and cross validation settings. Based on these CV settings the training and test data set are created for the variant of a learner. Finally, the results of each cross validation experiment for all the variants of a particular learner are saved in a respective `Rdata` file for that learner. Saving the results in `Rdata` file enables us for latter analysis without the need to create learning system again which is a time and resource consuming process.
+
+`R`-code Notes:
+
+1. We create a `dataset` object by passing `formula`, our data frame, and a label 'All'.
+2. We have four learners "decisionTree", "knn", "svm", "randomForest". We create a learning system using these four learners. For each leaner, many variants are carted by `variants` function based on the number of hyper parameters we have.  
+3. We use 10-fold CV with seed 710 (derived from MA-710)
+
+```{r eval=FALSE, message=FALSE, warning=FALSE}
+data_set <- list(dataset(form, csc_tbl_raw_small, 'ALL'))
+learners <- c('decisionTree', 'knn', 'svm', 'randomForest')
+for(learner in learners) {
+  assign(learner,
+         experimentalComparison(
+           data_set,
+           c(
+             do.call('variants',
+                     c(list('genericModel', learner = learner),
+                       vars_hyper[[learner]],
+                       varsRootName = learner))
+           ),
+           cvSettings(1, 10, 710)
+         )
+  )
+  save(list = learner, file = paste(learner, 'Rdata', sep = '.'))
+}
+```
+
+## Learning Systems
+
+We load the learning systems from the local file system.
+
+```{r}
+load('decisionTree.Rdata')
+load('knn.Rdata')
+load('svm.Rdata')
+load('randomForest.Rdata')
+```
+
+### Decsison Trees
+
+We have 48 variants of Decision Trees learner.
+
+```{r}
+decisionTree
+```
+
+We look at the top 5 performing decision trees systems. 
+
+`R`-code Notes:
+
+1. The `rankSystem` function belongs to the library `DMwR` which provide a ranking of learners in our models. `maxs = TRUE` means the respective statistic is to be maximized - in our case the statistic is predictive accuracy.
+
+```{r}
+rankSystems(decisionTree, maxs = TRUE)
+```
+
+The top performing variant is `r rankSystems(decisionTree, maxs = TRUE)$ALL$accuracy$system[1]` with accuracy of `r round(rankSystems(decisionTree, maxs = TRUE)$ALL$accuracy$score[1], 2)`%.
+
+We also graphically discern the performance variability of these top 5  variants across 10-folds of CV.
+
+`R`-code Notes:
+
+1. Since we have 48 variants we subset the results for top 5 variants based on ranking and visualize the summary of the top 5 variants. 
+
+
+```{r}
+plot(subset(decisionTree, 
+            vars = rankSystems(decisionTree, maxs = TRUE)$ALL$accuracy$system))
+```
+
+
+Plot Interpretation: From the plot we see that the median accuracy (filled dark points) of top 5 decision tree models is above 75%. We observe, in general, that there are no big differences for the ranges between first quantile and third quantile of accuracy measure. Few models have outliers with lower than 70% accuracy.
+
+Next we look at the hyper parameters of the top performing variant of decision tree learner.
+
+`R`-code Notes:
+
+1. In order to get the top performing variant based on best score on accuracy measure, we apply the `bestScores` function which will call the best scores on an experimental comparison. The `getVariant` helps us to call the learner objects from our model. 
+
+```{r}
+best_dt_system <- bestScores(decisionTree, maxs = TRUE)$ALL$system
+getVariant(best_dt_system, decisionTree)
+```
+
+### k-Nearest Neighbors
+
+We have 30 variants of kNN learner.
+
+```{r}
+knn
+```
+
+We look at the top 5 performing kNN systems. 
+
+`R`-code Notes:
+
+1. The `rankSystem` function belongs to the library `DMwR` which provide a ranking of learners in our models. `maxs = TRUE` means the respective statistic is to be maximized - in our case the statistic is predictive accuracy.
+
+```{r}
+rankSystems(knn, maxs = TRUE)
+```
+
+The top performing variant is `r rankSystems(knn, maxs = TRUE)$ALL$accuracy$system[1]` with accuracy of `r round(rankSystems(knn, maxs = TRUE)$ALL$accuracy$score[1], 2)`%.
+
+We also graphically discern the performance variability of these top 5  variants across 10-folds of CV.
+
+`R`-code Notes:
+
+1. Since we have 30 variants we subset the results for top 5 variants based on ranking.
+
+
+```{r}
+plot(subset(knn, 
+            vars = rankSystems(knn, maxs = TRUE)$ALL$accuracy$system))
+
+```
+
+
+Plot Interpretation: kNN model seems to render better results as compare to decision trees with median accuracy of over 80% for most versions. The accuracy ranges of kNN models are unevenly distributed unlike decisions trees’ accuracy measures. 
+
+Next we look at the hyper parameters of the top performing variant of kNN learner.
+
+`R`-code Notes:
+
+1. In order to get the top performing variant based on best score on accuracy measure, we apply the `bestScores` function which will call the best scores on an experimental comparison. The `getVariant` helps us to call the learner objects from our model. 
+
+```{r}
+best_knn_system <- bestScores(knn, maxs = TRUE)$ALL$system
+getVariant(best_knn_system, knn)
+```
+
+### Support Vector Machines
+
+We have 36 variants of SVM learner.
+
+```{r}
+svm
+```
+
+We look at the top 5 performing SVM systems. 
+
+`R`-code Notes:
+
+1. The `rankSystem` function belongs to the library `DMwR` which provide a ranking of leaner in our models. `maxs = TRUE` means the respective statistic is to be maximized - in our case the statistic is predictive accuracy.
+
+```{r}
+rankSystems(svm, maxs = TRUE)
+```
+
+The top performing variant is `r rankSystems(svm, maxs = TRUE)$ALL$accuracy$system[1]` with accuracy of `r round(rankSystems(svm, maxs = TRUE)$ALL$accuracy$score[1], 2)`%.
+
+We also graphically discern the performance variability of these top 5 variants across 10-folds of CV.
+
+`R`-code Notes:
+
+1. Since we have 36 variants we subset the results for top 5 variants based on ranking.
+
+
+```{r}
+plot(subset(svm, 
+            vars = rankSystems(svm, maxs = TRUE)$ALL$accuracy$system))
+
+```
+
+
+Plot interpretation: From the results of SVM model, we see that median accuracy measures vary between 65% to less than 75%. SVM performance is not at par with decision tress or kNN models. 
+
+Next we look at the hyper parameters of the top performing variant of SVM learner.
+
+`R`-code Notes:
+
+1. In order to get the top performing variant based on best score on accuracy measure, we apply the `bestScores` function which will call the best scores on an experimental comparison. The `getVariant` helps us to call the learner objects from our model. 
+
+```{r}
+best_svm_system <- bestScores(svm, maxs = TRUE)$ALL$system
+getVariant(best_svm_system, svm)
+```
+
+
+### Random Forests
+
+We have 15 variants of randomForest learner.
+
+```{r}
+randomForest
+```
+
+We look at the top 5 performing randomForest systems. 
+
+`R`-code Notes:
+
+1. The `rankSystem` function belongs to the library `DMwR` which provide a ranking of learners in our models. `maxs = TRUE` means the respective statistic is to be maximized - in our case the statistic is predictive accuracy.
+
+```{r}
+rankSystems(randomForest, maxs = TRUE)
+```
+
+The top performing variant is `r rankSystems(randomForest, maxs = TRUE)$ALL$accuracy$system[1]` with accuracy of `r round(rankSystems(randomForest, maxs = TRUE)$ALL$accuracy$score[1], 2)`%.
+
+We also graphically discern the performance variability of these top 5  variants across 10-folds of CV.
+
+`R`-code Notes:
+
+1. Since we have 15 variants we subset the results for top 5 variants based on score ranking.
+
+
+```{r}
+plot(subset(randomForest, 
+            vars = rankSystems(randomForest, maxs = TRUE)$ALL$accuracy$system))
+
+```
+
+
+Plot interpretation: From the results of random forest model, we see the top 5 models have accuracy around 82% with some variability. Overall results look better comparatively to other learners.
+
+Next we look at the hyper parameters of the top performing variant of randomForest learner.
+
+`R`-code Notes:
+
+1. In order to get the top performing variant based on best score on accuracy measure, we apply the `bestScores` function which will call the best scores on an experimental comparison. The `getVariant` helps us to call the learner objects from our model. 
+```{r}
+best_rf_system <- bestScores(randomForest, maxs = TRUE)$ALL$system
+getVariant(best_rf_system, randomForest)
+```
+
+### Best Learning System
+
+We now graphically compare the performance of top 2 variants from each of the learning categories. This gives us a quick picture to conclude which learning system is performing best among four categories.
+
+`R`-code Notes:
+
+1. Since we have 129 variants across four categories, we subset the results for top 2 variants based on ranking in each category.
+
+```{r}
+plot(join(subset(decisionTree, 
+            vars = rankSystems(decisionTree, top = 2, maxs = TRUE)$ALL$accuracy$system), 
+     subset(knn, 
+            vars = rankSystems(knn, top = 2, maxs = TRUE)$ALL$accuracy$system),
+     subset(svm, 
+            vars = rankSystems(svm, top = 2, maxs = TRUE)$ALL$accuracy$system),
+     subset(randomForest, 
+            vars = rankSystems(randomForest, top = 2, maxs = TRUE)$ALL$accuracy$system),
+     by='variants'))
+```
+
+
+Plot interpretation: From the plot it is clear that randomForest and kNN perform better than the other two learners with randomForest having a slight edge. The SVM learner performs the worst with decision tree performance in the middle.
+
+We look at the top 5 performing systems among four categories. 
+
+`R`-code Notes:
+
+1. We join all the learners and rank the complete learning system.
+
+```{r}
+all.trials <- join(decisionTree, svm, knn, randomForest, by = 'variants')
+rankSystems(all.trials, maxs = T)
+```
+
+All top 5 performing systems are from 'Random Forests' learner category. The top performing variant is `r rankSystems(all.trials, maxs = TRUE)$ALL$accuracy$system[1]` with accuracy of `r round(rankSystems(all.trials, maxs = TRUE)$ALL$accuracy$score[1], 2)`%.
+
+Next we look at the hyper parameters of the top performing variant of randomForest learner.
+
+`R`-code Notes:
+
+1. We get the top performing variant based on best score on accuracy measure.
+
+```{r}
+best_scores <- bestScores(all.trials, maxs = TRUE)
+best_system <- best_scores$ALL$system
+getVariant(best_system, all.trials)
+```
+
+
+# PART II
+
+Since Random Forests learner performed better than all other three learners, we evaluate top Random Forest model for performance in this section.
+
+### Random Forest
+
+The best performing system is from the "Random Forests" learner category. The top performing variant is `r rankSystems(all.trials, maxs = TRUE)$ALL$accuracy$system[1]` with accuracy of `r round(rankSystems(all.trials, maxs = TRUE)$ALL$accuracy$score[1], 2)`%.
+
+In this section, we analyze `r best_system` in more detail. We look again the hyperparameters of this variant.
+
+```{r}
+best_system_paras <- getVariant(best_system, all.trials)
+best_system_paras
+```
+
+The best variant is created by growing 500 trees and randomly selecting 11 variables at each split without replacement, i.e. when sampling the cases to consider at each split, algorithm does not return these cases back to the pool to be sampled again.
+
+Next, we predict the target class using a generic function. Note, this generic function is used to predict target class for other variants of other learners as we continue our analysis. 
+
+`R`-code Notes:
+
+1. Method takes formula, training, and test data sets. In addition, learner specific parameters along with learner name are passed as optional parameters (`...`).
+2. Prediction accuracy and predicted class is stored as `cvRun` object and is returned using `structure` function with `itsInfo` attribute having predicted target class.
+
+```{r}
+bestlearner.cv <- function(form, train, test, ...) {
+  pars <- list(...)
+  learner <- pars[1]
+  pars <- pars[-1]
+  pred <- NA
+  if (learner == 'decisionTree') {
+    rpart_control <- do.call("rpart.control", c(pars))
+    model <- rpart(form,
+                   train,
+                   control = rpart_control)
+    pred <- predict(model, test, type = "class")
+  }
+  if (learner == 'knn') {
+    model <- do.call("kknn", c(list(form, train, test), pars))
+    pred <- model$fitted.values
+    names(pred) <- rownames(test)
+  }
+  if (learner == 'randomForest' | learner == 'svm') {
+    model <- do.call(as.character(learner), c(list(form, train), pars))
+    pred <- predict(model, test)
+  }
+  structure(c(accuracy = ifelse(pred == resp(form, test), 100, 0)),
+           itInfo = list(pred))
+  
+}
+```
+
+We retrieve the hyperparameters of the best "Random Forest" variant and use `crossValidation` function to predict target class using 10-fold methodology.
+
+`R`-code Notes:
+
+1. Hyperparameters are retrieved from best system and stored as a list which is passed to our generic learner - `bestlearner.cv`.
+2. Predictions are stored `itsInfo` attribute and returned through `structure` function.
+3. Since we run 10-fold CV, we have predictions for each fold stored in a separate list element with 10 elements in total each element containing prediction for 122 observations with total observation of 1,220.
+4. We print first few predictions of first-fold.
+5. Finally we tabulate the results akin to confusion matrix.
+
+
+```{r message=FALSE}
+pars <- best_system_paras@pars
+resTop <- crossValidation(learner('bestlearner.cv', 
+                                  pars = pars),
+                          dataset(Earnings ~ ., csc_tbl_raw_small),
+                          cvSettings(1, 10, 710),
+                          itsInfo = T)
+
+head(attr(resTop,'itsInfo')[[1]])
+preds <- unlist(attr(resTop,'itsInfo'))
+table(Predicted = preds, Actual = csc_tbl_raw_small$Earnings[as.numeric(names(preds))])
+```
+
+Further, to understand and evaluate our top model we create confusion matrix and assign it to a variable and analyze the results. The way a classifier's performance is interpreted depends on the intended use of the classifier and nature of the classification task at hand. For example, an algorithm that is 99% percent accurate in identifying a life-threatening condition or 99% accurate in predicting the landing on the moon may simply not be acceptable. However, in other applications, such as deciding whether or not to invest in a certain stock, an accuracy of 85% is likely to be more acceptable.  
+
+## Confusion Matrix 
+
+```{r}
+confusion_matrix <- table(Predicted = preds, Actual = csc_tbl_raw_small$Earnings[as.numeric(names(preds))])
+confusionMatrix(confusion_matrix)
+```
+
+Our prediction accuracy is `r round(sum(diag(confusion_matrix))/sum(confusion_matrix)*100,2)`% which is the percentage of correctly classified institutions subjected to students’ earnings. Therefore, our error rate is `r (1 - round(sum(diag(confusion_matrix))/sum(confusion_matrix),4))*100`%.
+
+
+### Precision and Recall
+
+For example, a risk-averse applicant who is interested in attending an institution with high earning potential, would be most interested in our precision rate of predicting those type of institutions. The precision of our classifier in classifying high earning institutions is `r round(confusionMatrix(confusion_matrix)$byClass["Class: High","Precision"], 2) * 100`%. Given that only `r round(sum(confusionMatrix(confusion_matrix)$table[,3])/sum(confusionMatrix(confusion_matrix)$table), 2)*100`% of 1,220 institutions are high earning potential institutions, model has done fairly well in identifying these institutions.
+
+The interpretation of recall (also known as sensitivity, or true positive rate) has a close relationship with precision. Specifically, recall is the proportion of retrieved instances (correctly predicted high earning potential institutions) divided by the relevant instances (total high earning potential institutions in reality). In our case, recall of high earning institutions is `r round(confusionMatrix(confusion_matrix)$byClass["Class: High","Recall"]*100, 2)`%. It appears that our model is a risk-averse model. Given that recall is lower than precision, we see that our model has missed predicting several high earning potential institutions. However, of the high earning potential institutions which model predicted, most institutions in reality fall into this category.
+
+
+### Sensitivity and Specificity
+
+Understanding sensitivity and specificity are quite similar, but varies slightly in interpretation. Given that our sensitivity is lower than specificity, we conclude that our model has relatively more false positives than false negatives. Our sensitivity (also recall) is `r round(confusionMatrix(confusion_matrix)$byClass["Class: High","Recall"]*100,2)`%. Given this, we say that, of the institutions that are high earning, our model incorrectly classifies `r round((1-(sum(confusionMatrix(confusion_matrix)$table[3,3])/(sum(confusionMatrix(confusion_matrix)$table[3,3])+sum(confusionMatrix(confusion_matrix)$table[1:2,3]))))*100,2)`% as low or medium earning. 
+
+Lastly, model specificity (or true negative rate) of high earning potential institutions is `r round(confusionMatrix(confusion_matrix)$byClass["Class: High","Specificity"]*100,2)`%, meaning that, of the institutions which are non-high earning institutions, model correctly identifies `r round(confusionMatrix(confusion_matrix)$byClass["Class: High","Specificity"]*100,2)`% of them. If we randomly guess that all institutions are either "Low" or "Medium" earning institutions, we expect to correctly classify `r round(sum(confusionMatrix(confusion_matrix)$table[,1:2])/sum(confusionMatrix(confusion_matrix)$table)*100,2)`% of institutions. Therefore our model is better than a random assignment and produces few false positives in classifying high earning potential schools.
+
+Although, model misclassified few high earning schools, we state with some confidence that the schools which model predicts to be high earning, are infact high earning schools. **Thus our model is more valuable to students who are interested in the better outcomes of attending higher education institutions.** 
+
+## Model Ensemble
+
+Ensemble modeling is often utilized as a technique to improve the overall prediction accuracy. It consists of combining a variety of models together to vote/rank a particular data point into a classification category. Typically this works best when the models are varied enough to provide a different view of the data. For example, the models may be built using different subsets of the population, differ in hypothesis, differ in machine learning algorithm, or may even differ in the initial seed used to run the algorithm. 
+
+Random Forests itself is an ensemble of several decision trees, but we take our analysis one step further. We use best learners from each of the three categories - 'Decision Tress', 'kNN', and 'Random Forests' - to find out whether ensemble of these three models help in improving the accuracy of classification task of the problem at hand any further. We drop 'SVM' from the voting process because SVM has the highest misclassification rate. Dropping 'SVM' also allows us avoiding ties.
+
+`R`-code Notes:
+
+1. Get hyper parameters of best decision tree using `getVariant` function.
+2. Get 10-fold CV predictions.
+3. Since 10-fold CV randomly shuffles the original observations before creating the10 folds, the predictions are not in a sequence as the observations in the original data set. As a result we sort the predictions to align with row numbers in the original data set - ` csc_tbl_raw_small`.
+
+```{r message=FALSE}
+pars <- getVariant(best_dt_system, all.trials)@pars
+resTop <- crossValidation(learner('bestlearner.cv', 
+                                  pars = pars),
+                          dataset(Earnings ~ ., csc_tbl_raw_small),
+                          cvSettings(1, 10, 710),
+                          itsInfo = T)
+preds_dt <- unlist(attr(resTop,'itsInfo'))
+preds_dt <- preds_dt[order(as.numeric(names(preds_dt)))]
+
+```
+
+We repeat the above steps to get the 10-fold predictions for kNN and Random Forests as shown below.
+
+**kNN**
+
+```{r message=FALSE}
+pars <- getVariant(best_knn_system, all.trials)@pars
+resTop <- crossValidation(learner('bestlearner.cv', 
+                                  pars = pars),
+                          dataset(Earnings ~ ., csc_tbl_raw_small),
+                          cvSettings(1, 10, 710),
+                          itsInfo = T)
+preds_knn <- unlist(attr(resTop,'itsInfo'))
+preds_knn <- preds_knn[order(as.numeric(names(preds_knn)))]
+```
+
+**Random Forests**
+
+```{r message=FALSE}
+pars <- getVariant(best_rf_system, all.trials)@pars
+resTop <- crossValidation(learner('bestlearner.cv', 
+                                  pars = pars),
+                          dataset(Earnings ~ ., csc_tbl_raw_small),
+                          cvSettings(1, 10, 710),
+                          itsInfo = T)
+preds_rf <- unlist(attr(resTop,'itsInfo'))
+preds_rf <- preds_rf[order(as.numeric(names(preds_rf)))]
+```
+Next we leverage voting across three learners to pick best prediction for each observation.
+
+`R`-code Notes:
+
+1. We create a 1,220 (number of observations) by 3 (number of voting learners) matrix and initialize with `NA`s.
+2. Each of the matrix column stores single learner's predictions.
+3. Final precision is selected based on maximum votes among three learners.
+4. Finally, confusion matrix is computed.
+
+```{r}
+pred_all <- matrix(NA, ncol = 3, nrow = nrow(csc_tbl_raw_small))
+pred_all[, 1] <- preds_dt
+pred_all[, 2] <- preds_knn
+pred_all[, 3] <- preds_rf
+pred_voted <- apply(pred_all, 1, function(x) levels(factor(x))[which.max(table(factor(x)))])
+pred_voted <- factor(pred_voted, levels = 1:nlevels(csc_tbl_raw_small$Earnings), 
+                     labels = levels(csc_tbl_raw_small$Earnings))
+confusion_matrix <- confusionMatrix(table(Predicted = pred_voted, 
+                                          Actual = csc_tbl_raw_small$Earnings))
+confusion_matrix$table
+```
+
+Three learner ensemble's prediction accuracy is `r round(confusion_matrix$overall[1] * 100,2)`%. Therefore, error rate is `r 100 - round(confusion_matrix$overall[1] * 100,2)`%. On the other hand, best Random Forest learner's accuracy is `r round(confusionMatrix(table(Predicted = preds_rf, Actual = csc_tbl_raw_small$Earnings))$overall[1] * 100, 2)`% and error rate is `r 100 - round(confusionMatrix(table(Predicted = preds_rf, Actual = csc_tbl_raw_small$Earnings))$overall[1] * 100, 2)`%.
+
+Hence, we conclude that using ensemble in this particular case does not afford intended benefits.
+
+## Practical Interpretation
+
+In this section, we briefly touch on how the model intuitively works from a layman stand point or precisely from students or families point of few who in one form or another want to pursue higher education institution in a hope of better outcomes. Since our random forest model is an ensemble of decision tress, we use decision tree as a knowledge representation language. For simplicity, we drop all the variables pertaining to field of study.
+`R`-code Notes:
+
+1. Remove all the variables with name starting with `PCIP`.
+2. Assign the resulting data to `csc_tbl_raw_small_2` object.
+3. Model decision tree using default parameters
+4. Draw decision tree using `prp` function from package `rpart.plot`
+.
+
+```{r}
+csc_tbl_raw_small %>%
+  select(-c(starts_with('PCIP')))  %>%
+  {.} ->  csc_tbl_raw_small_2
+
+dt_model <- rpart(form, data = csc_tbl_raw_small_2)
+prp(dt_model)
+```
+
+Decision tree interpretation: We do not describe all the rules, but highlight the main emerging themes as below:
+
+1. Students with higher SAT score, in general, have better outcomes measured in terms of earnings. This means better academically prepared students fare better.
+2. On the similar note, institution which are more selective (lower admission rate), affords better outcomes for their students.
+3. Institutions which pay higher average salaries to their faculties, afford better outcomes for students.
+4. On the similar note, institutions which spent more on instructions have better outcomes for students,
+5. Percentage of Pell grants offered by institutions may offer insights. The institutions which provide more Pell grants seems not preparing their students for better outcomes. Even though these intuitions are making education affordable to students from no so well doing families, these students are not able to translate these offered grants to better outcomes in the job market.
+6. Lastly, students from high family income tend to do better after they complete the studies.
+
+Above interpretation may offer some insights to students, their families and policy makers.
+
+
+# Conclusion
+
+Random Forests variant is our top model with accuracy of `r round(rankSystems(all.trials, maxs = TRUE)$ALL$accuracy$score[1], 2)`% and standard deviation of `r round(statScores(
+    subset(randomForest, 
+           vars = rankSystems(randomForest, maxs = TRUE)$ALL$accuracy$system),
+             'accuracy','sd')[[1]][[1]], 2)`
+
+Below is the count of each class in our dataset:
+
+```{r}
+table(Actual = csc_tbl_raw_small$Earnings)
+```
+
+Now, we evaluate the model against 'Maximum chance criterion' and ‘Proportional chance criterion'. Our assumption is that if the classification accuracy of our model is at least one-fourth greater than that achieved by chance than our model is adequate.
+
+Maximum chance criterion: Because group Earnings = “Medium” is the largest group with 778 observations, the model would be correct 63.77% of the times if model assigns all the observations to this group. The classification accuracy at least one-fourth greater than that achieved by Maximum chance criterion would be **`r round(63.77 * 1.25, 2)`%**.
+
+Proportional chance criterion: assumes that the cost of misclassification is equal for each group. The proportional chance criterion for two classes is:
+
+$C_{PRO} = p^2 + (1 – p)^2$
+
+where
+
+$C_{PRO}$ = proportional chance criterion
+
+p = proportion of first class
+
+1 - p = proportion of second class
+
+Adapting this formula to our three classes, we get $C_{PRO}$ = 47.51%. The classification accuracy at least one-fourth greater than that achieved by Proportional chance criterion would be **`r round(47.51 * 1.25, 2)`%**.
+
+Classification accuracy of our dataset **(`r round(rankSystems(all.trials, maxs = TRUE)$ALL$accuracy$score[1], 2)`%)** is at least one-fourth greater than that achieved by maximum chance criterion and proportional chance criterion. Henceforth, model seems adequate.
+
+Finally we tabulate the accuracy and error rate of top model from each learner category along with learner parameters. It is evident from the table below that Random Forests modeling is the best choice with highest accuracy and lowest standard deviation in classification prediction task at hand.
+
+```{r echo = FALSE}
+getHyperParsStr <- function(pars) {
+  hpars <- NULL
+  for(i in 2:length(pars)){
+    hpars <- paste(hpars, paste(names(pars[i]), pars[i], sep = "=" ), sep = ", ")
+  }
+  return(substr(hpars, 3, nchar(hpars)))
+}
+
+col_names <- c("Learner Name", "10-Fold CV Accuracy (%)", "Standard Deviation", "Hyperparameter")
+col_names <- c("Learner Name", "10-Fold CV Accuracy (%)", "Standard Deviation", "Hyperparameter")
+row1 = c("Random Forests", 
+         round(rankSystems(randomForest, maxs = TRUE)$ALL$accuracy$score[1], 2), 
+         round(statScores(
+           subset(randomForest, 
+                  vars = rankSystems(randomForest, maxs = TRUE)$ALL$accuracy$system),
+           'accuracy','sd')[[1]][[1]], 2), 
+         getHyperParsStr(getVariant(best_rf_system, randomForest)@pars)
+         )
+row2 = c("k-Nearest Neighbors", 
+         round(rankSystems(knn, maxs = TRUE)$ALL$accuracy$score[1], 2), 
+         round(statScores(
+           subset(knn, 
+                  vars = rankSystems(knn, maxs = TRUE)$ALL$accuracy$system),
+           'accuracy','sd')[[1]][[1]], 2), 
+         getHyperParsStr(getVariant(best_knn_system, knn)@pars)
+         )
+row3 = c("Decision Trees", 
+         round(rankSystems(decisionTree, maxs = TRUE)$ALL$accuracy$score[1], 2), 
+         round(statScores(
+           subset(decisionTree, 
+                  vars = rankSystems(decisionTree, maxs = TRUE)$ALL$accuracy$system),
+           'accuracy','sd')[[1]][[1]], 2), 
+         getHyperParsStr(getVariant(best_dt_system, decisionTree)@pars)
+         )
+row4 = c("Support V. Machines", 
+         round(rankSystems(svm, maxs = TRUE)$ALL$accuracy$score[1], 2), 
+         round(statScores(
+           subset(svm, 
+                  vars = rankSystems(svm, maxs = TRUE)$ALL$accuracy$system),
+           'accuracy','sd')[[1]][[1]], 2), 
+         getHyperParsStr(getVariant(best_svm_system, svm)@pars)
+         )
+var_mat <- matrix(c(row1, row2, row3, row4), byrow = TRUE, nrow = 4)
+var_df <- data.frame(var_mat)
+names(var_df) <- col_names
+kable(var_df, format = "pandoc")
+```
+
+# References
+
+1. Multivariate Data Analysis by Hair
+2. Data Mining with Rattler and R by Williams
+3. Data Mining with R, learning with case studies by Torgo
+
